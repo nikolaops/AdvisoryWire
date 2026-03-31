@@ -41,8 +41,9 @@ export class GithubAdvisoryConnector extends BaseConnector {
 
   async fetch(sinceDate?: Date): Promise<SourceFetchResult> {
     try {
-      // Default lookback: 3 days on first run
-      const effectiveSince = sinceDate ?? new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      // On first run (no sinceDate), use NOW as baseline - fetch nothing, just establish checkpoint.
+      // Next poll will fetch only what appeared since this moment.
+      const effectiveSince = sinceDate ?? new Date();
       logger.info({ source: this.name, since: effectiveSince.toISOString() }, 'Fetching GitHub Advisory Database');
 
       const headers: Record<string, string> = {
