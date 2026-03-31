@@ -3,9 +3,27 @@ import { BaseConnector } from '../base/connector';
 import { SourceFetchResult } from '../../shared';
 import logger from '../../logging';
 
-const OSV_API_URL = 'https://api.osv.dev/v1/query';
+// OSV GCS bucket - lists all vulnerabilities per ecosystem
+const OSV_GCS_LIST_URL = 'https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o';
+const OSV_GCS_DOWNLOAD_BASE = 'https://storage.googleapis.com/osv-vulnerabilities';
 
-interface OsvVulnerability {
+// Ecosystems to monitor
+const ECOSYSTEMS = ['npm', 'PyPI', 'Go', 'Maven', 'RubyGems'];
+// Max items to fetch per ecosystem per run
+const MAX_PER_ECOSYSTEM = 20;
+
+interface GcsObject {
+  name: string;
+  updated: string;
+  size: string;
+}
+
+interface GcsListResponse {
+  items?: GcsObject[];
+  nextPageToken?: string;
+}
+
+export interface OsvVulnerability {
   id: string;
   summary?: string;
   details?: string;
@@ -35,60 +53,70 @@ export class OsvConnector extends BaseConnector {
 
   async fetch(sinceDate?: Date): Promise<SourceFetchResult> {
     try {
-      logger.info({ source: this.name, sinceDate }, 'Fetching OSV data');
+      logger.info({ source: this.name, ecosystems: ECOSYSTEMS }, 'Fetching OSV data from GCS');
 
-      // For MVP, we'll fetch recent vulnerabilities from npm ecosystem
-      // In a real implementation, this would be more sophisticated
-      const response = await axios.post<{ vulns: OsvVulnerability[] }>(
-        OSV_API_URL,
-        {
-          package: {
-            ecosystem: 'npm',
-          },
-        },
-        {
-          timeout: 30000,
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'SecurityAdvisoryNotifier/1.0',
-          },
+      const allVulns: OsvVulnerability[] = [];
+
+      for (const ecosystem of ECOSYSTEMS) {
+        try {
+          const vulns = await this.fetchEcosystem(ecosystem, sinceDate);
+          allVulns.push(...vulns);
+          logger.info({ source: this.name, ecosystem, count: vulns.length }, 'Ecosystem fetch done');
+        } catch (err) {
+          logger.warn({ source: this.name, ecosystem, err }, 'Ecosystem fetch failed, skipping');
         }
-      );
-
-      if (!response.data || !response.data.vulns) {
-        logger.warn({ source: this.name }, 'No vulnerabilities returned from OSV');
-        return {
-          success: true,
-          items: [],
-        };
       }
 
-      let items = response.data.vulns || [];
+      logger.info({ source: this.name, total: allVulns.length }, 'OSV fetch completed');
 
-      // Filter by date if sinceDate provided
-      if (sinceDate) {
-        items = items.filter(item => {
-          if (!item.published) return false;
-          const published = new Date(item.published);
-          return published > sinceDate;
-        });
-      }
-
-      // Limit to recent 100 items for MVP
-      items = items.slice(0, 100);
-
-      logger.info(
-        { source: this.name, totalItems: items.length },
-        'OSV fetch completed'
-      );
-
-      return {
-        success: true,
-        items,
-      };
+      return { success: true, items: allVulns };
     } catch (error) {
       logger.error({ error, source: this.name }, 'OSV fetch failed');
       return this.handleError(error);
     }
+  }
+
+  private async fetchEcosystem(ecosystem: string, sinceDate?: Date): Promise<OsvVulnerability[]> {
+    // List recent objects in GCS bucket for this ecosystem
+    const listResponse = await axios.get<GcsListResponse>(OSV_GCS_LIST_URL, {
+      params: {
+        prefix: `${ecosystem}/`,
+        maxResults: 200,
+        fields: 'items(name,updated)',
+      },
+      timeout: 30000,
+    });
+
+    if (!listResponse.data.items || listResponse.data.items.length === 0) {
+      return [];
+    }
+
+    // Sort by updated descending and take most recent
+    let objects = listResponse.data.items
+      .filter(obj => obj.name.endsWith('.json'))
+      .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+
+    // Filter by sinceDate if provided
+    if (sinceDate) {
+      objects = objects.filter(obj => new Date(obj.updated) > sinceDate);
+    }
+
+    objects = objects.slice(0, MAX_PER_ECOSYSTEM);
+
+    // Fetch each vulnerability JSON
+    const vulns: OsvVulnerability[] = [];
+    for (const obj of objects) {
+      try {
+        const url = `${OSV_GCS_DOWNLOAD_BASE}/${obj.name}`;
+        const res = await axios.get<OsvVulnerability>(url, { timeout: 15000 });
+        if (res.data && res.data.id) {
+          vulns.push(res.data);
+        }
+      } catch {
+        // Skip individual failures
+      }
+    }
+
+    return vulns;
   }
 }

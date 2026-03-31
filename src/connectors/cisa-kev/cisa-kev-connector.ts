@@ -37,7 +37,11 @@ export class CisaKevConnector extends BaseConnector {
       const response = await axios.get<CisaKevResponse>(CISA_KEV_URL, {
         timeout: 30000,
         headers: {
-          'User-Agent': 'SecurityAdvisoryNotifier/1.0',
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0',
+          'Accept': 'application/json, text/plain, */*',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
         },
       });
 
