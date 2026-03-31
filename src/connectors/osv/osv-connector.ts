@@ -88,9 +88,12 @@ export class OsvConnector extends BaseConnector {
   }
 
   private async fetchEcosystem(ecosystem: string, sinceDate?: Date): Promise<OsvVulnerability[]> {
-    // On first run (no sinceDate), use NOW as baseline - fetch nothing, just establish checkpoint.
-    // Next poll will fetch only what appeared since this moment.
-    const effectiveSince = sinceDate ?? new Date();
+    // First run (no sinceDate): baseline only, fetch nothing
+    // After downtime: cap lookback to max 2h to prevent notification floods
+    const maxLookback = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const effectiveSince = sinceDate
+      ? (sinceDate > maxLookback ? sinceDate : maxLookback)
+      : new Date();
 
     // List recent objects in GCS bucket for this ecosystem
     const listResponse = await axios.get<GcsListResponse>(OSV_GCS_LIST_URL, {
