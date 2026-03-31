@@ -104,15 +104,17 @@ export class OsvConnector extends BaseConnector {
 
     objects = objects.slice(0, MAX_PER_ECOSYSTEM);
 
-    // Fetch each vulnerability JSON and filter by actual published date
+    // Fetch each vulnerability JSON and filter by OSV modified date (not original published date)
+    // modified = when OSV last added/updated this record = "new in feed"
     const vulns: OsvVulnerability[] = [];
     for (const obj of objects) {
       try {
         const url = `${OSV_GCS_DOWNLOAD_BASE}/${obj.name}`;
         const res = await axios.get<OsvVulnerability>(url, { timeout: 15000 });
         if (res.data && res.data.id) {
-          // Filter by actual published date, not GCS file update time
-          if (res.data.published && new Date(res.data.published) < effectiveSince) {
+          // Use modified date - this is when OSV added/updated the record
+          const modifiedDate = res.data.modified ? new Date(res.data.modified) : null;
+          if (modifiedDate && modifiedDate < effectiveSince) {
             continue;
           }
           vulns.push(res.data);
