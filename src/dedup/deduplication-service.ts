@@ -1,5 +1,5 @@
 import { AdvisoryRepository } from '../persistence/repositories/advisory-repository';
-import { DeduplicationResult } from '../shared/types';
+import { DeduplicationResult } from '../shared';
 import logger from '../logging';
 
 export class DeduplicationService {

@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { BaseConnector } from '../base/connector';
-import { SourceFetchResult } from '../../shared/types';
+import { SourceFetchResult } from '../../shared';
 import logger from '../../logging';
 
 const OSV_API_URL = 'https://api.osv.dev/v1/query';

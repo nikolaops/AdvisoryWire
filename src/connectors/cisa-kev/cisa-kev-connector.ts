@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { BaseConnector } from '../base/connector';
-import { SourceFetchResult } from '../../shared/types';
+import { SourceFetchResult } from '../../shared';
 import logger from '../../logging';
 
 const CISA_KEV_URL = 'https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json';

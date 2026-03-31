@@ -1,6 +1,6 @@
 import { WebClient } from '@slack/web-api';
 import { config } from '../../config';
-import { StoredAdvisory } from '../../shared/types';
+import { StoredAdvisory } from '../../shared';
 import logger from '../../logging';
 
 export interface SlackMessageResult {

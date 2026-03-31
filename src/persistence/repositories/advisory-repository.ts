@@ -1,5 +1,5 @@
 import { query, getClient } from '../database';
-import { NormalizedAdvisory, StoredAdvisory, DeduplicationResult } from '../../shared/types';
+import { NormalizedAdvisory, StoredAdvisory, DeduplicationResult } from '../../shared';
 import logger from '../../logging';
 
 export class AdvisoryRepository {
@@ -166,7 +166,7 @@ export class AdvisoryRepository {
       [notificationType, limit]
     );
 
-    return result.rows.map(row => this.mapRow(row));
+    return result.rows.map((row: any) => this.mapRow(row));
   }
 
   private mapRow(row: any): StoredAdvisory {

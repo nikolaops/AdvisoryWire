@@ -1,4 +1,4 @@
-import { NormalizedAdvisory, RoutingClass } from '../shared/types';
+import { NormalizedAdvisory, RoutingClass } from '../shared';
 import { ScoringService } from '../scoring/scoring-service';
 import logger from '../logging';
 

@@ -1,4 +1,4 @@
-import { SourceFetchResult } from '../../shared/types';
+import { SourceFetchResult } from '../../shared';
 
 export interface SourceConnector {
   readonly name: string;

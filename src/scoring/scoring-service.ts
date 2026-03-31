@@ -1,4 +1,4 @@
-import { NormalizedAdvisory, ScoringResult, RoutingClass } from '../shared/types';
+import { NormalizedAdvisory, ScoringResult, RoutingClass } from '../shared';
 import { config } from '../config';
 import logger from '../logging';
 

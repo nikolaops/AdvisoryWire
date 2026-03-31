@@ -1,5 +1,4 @@
-import { NormalizedAdvisory, Severity, ExploitStatus, AdvisoryStatus } from '../../shared/types';
-import { generateHash, normalizeDate, normalizeSeverity } from '../../shared/utils';
+import { NormalizedAdvisory, Severity, ExploitStatus, AdvisoryStatus, generateHash, normalizeDate, normalizeSeverity } from '../shared';
 
 export interface Normalizer {
   normalize(rawItem: any): NormalizedAdvisory;
