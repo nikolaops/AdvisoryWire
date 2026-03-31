@@ -1,10 +1,10 @@
 import { SourceConnector } from './base/connector';
-import { CisaKevConnector } from './cisa-kev/cisa-kev-connector';
+import { GithubAdvisoryConnector } from './github-advisory/github-advisory-connector';
 import { OsvConnector } from './osv/osv-connector';
 
 export function getConnectors(): SourceConnector[] {
   return [
-    new CisaKevConnector(),
+    new GithubAdvisoryConnector(),
     new OsvConnector(),
   ];
 }

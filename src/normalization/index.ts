@@ -1,4 +1,4 @@
-import { Normalizer, CisaKevNormalizer, OsvNormalizer } from './normalizers';
+import { Normalizer, CisaKevNormalizer, OsvNormalizer, GithubAdvisoryNormalizer } from './normalizers';
 
 export function getNormalizerForSource(sourceName: string): Normalizer {
   switch (sourceName) {
@@ -6,6 +6,8 @@ export function getNormalizerForSource(sourceName: string): Normalizer {
       return new CisaKevNormalizer();
     case 'osv':
       return new OsvNormalizer();
+    case 'github-advisory':
+      return new GithubAdvisoryNormalizer();
     default:
       throw new Error(`No normalizer found for source: ${sourceName}`);
   }

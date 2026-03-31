@@ -18,23 +18,23 @@ export class Scheduler {
 
     const connectors = getConnectors();
 
-    // Schedule CISA KEV polling
-    const cisaConnector = connectors.find(c => c.name === 'cisa-kev');
-    if (cisaConnector) {
-      const cisaJob = cron.schedule(
-        config.polling.cisaKevInterval,
+    // Schedule GitHub Advisory polling
+    const githubConnector = connectors.find(c => c.name === 'github-advisory');
+    if (githubConnector) {
+      const githubJob = cron.schedule(
+        config.polling.githubAdvisoryInterval,
         () => {
-          logger.info('CISA KEV scheduled job triggered');
-          this.orchestrator.processSource(cisaConnector).catch(error => {
-            logger.error({ error }, 'CISA KEV processing failed');
+          logger.info('GitHub Advisory scheduled job triggered');
+          this.orchestrator.processSource(githubConnector).catch(error => {
+            logger.error({ error }, 'GitHub Advisory processing failed');
           });
         },
         {
           timezone: config.digest.timezone,
         }
       );
-      this.jobs.push(cisaJob);
-      logger.info({ schedule: config.polling.cisaKevInterval }, 'CISA KEV polling scheduled');
+      this.jobs.push(githubJob);
+      logger.info({ schedule: config.polling.githubAdvisoryInterval }, 'GitHub Advisory polling scheduled');
     }
 
     // Schedule OSV polling

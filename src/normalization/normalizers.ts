@@ -33,6 +33,53 @@ export class CisaKevNormalizer implements Normalizer {
   }
 }
 
+export class GithubAdvisoryNormalizer implements Normalizer {
+  normalize(rawItem: any): NormalizedAdvisory {
+    const ghsaId: string = rawItem.ghsa_id || 'UNKNOWN';
+    const cveId: string | null = rawItem.cve_id || null;
+    const cveIds: string[] = cveId ? [cveId] : [];
+
+    // GitHub Advisory has direct severity string: low, medium, high, critical
+    const severity: Severity = normalizeSeverity(rawItem.severity || 'unknown');
+
+    // CVSS score from the cvss object
+    const cvssScore: number | null = rawItem.cvss?.score ?? null;
+
+    // References are plain strings
+    const references = (rawItem.references || []).map((url: string) => ({ url, label: null }));
+    if (rawItem.html_url) {
+      references.unshift({ url: rawItem.html_url, label: 'GitHub Advisory' });
+    }
+
+    // Vendor from first affected package ecosystem
+    const vendor: string | null = rawItem.vulnerabilities?.[0]?.package?.ecosystem ?? null;
+
+    // GitHub Advisory database does not flag exploit_status directly
+    // but CRITICAL severity advisories in GHSA are almost always actively exploited
+    const exploitStatus: ExploitStatus = cvssScore !== null && cvssScore >= 9.0
+      ? 'exploited'
+      : 'unknown';
+
+    return {
+      externalId: ghsaId,
+      source: 'github-advisory',
+      title: rawItem.summary || `${ghsaId}`,
+      summary: rawItem.description || rawItem.summary || '',
+      severity,
+      publishedAt: normalizeDate(rawItem.published_at) || new Date(),
+      updatedAt: normalizeDate(rawItem.updated_at),
+      vendor,
+      cveIds,
+      references,
+      tags: (rawItem.cwes || []).map((c: any) => c.cwe_id),
+      exploitStatus,
+      status: 'active' as AdvisoryStatus,
+      rawPayload: rawItem,
+      rawHash: generateHash(rawItem),
+    };
+  }
+}
+
 export class OsvNormalizer implements Normalizer {
   normalize(rawItem: any): NormalizedAdvisory {
     const osvId = rawItem.id || 'UNKNOWN';

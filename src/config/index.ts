@@ -20,7 +20,7 @@ export interface Config {
     port: number;
   };
   polling: {
-    cisaKevInterval: string;
+    githubAdvisoryInterval: string;
     osvInterval: string;
   };
   digest: {
@@ -60,7 +60,7 @@ export const config: Config = {
     port: parseInt(getEnvVar('PORT', '3000'), 10),
   },
   polling: {
-    cisaKevInterval: getEnvVar('CISA_KEV_POLL_INTERVAL', '0 */6 * * *'),
+    githubAdvisoryInterval: getEnvVar('GITHUB_ADVISORY_POLL_INTERVAL', '0 */6 * * *'),
     osvInterval: getEnvVar('OSV_POLL_INTERVAL', '0 */6 * * *'),
   },
   digest: {
