@@ -8,7 +8,17 @@ const OSV_GCS_LIST_URL = 'https://storage.googleapis.com/storage/v1/b/osv-vulner
 const OSV_GCS_DOWNLOAD_BASE = 'https://storage.googleapis.com/osv-vulnerabilities';
 
 // Ecosystems to monitor
-const ECOSYSTEMS = ['npm', 'PyPI', 'Go', 'Maven', 'RubyGems'];
+const ECOSYSTEMS = [
+  'npm',          // Node.js packages
+  'PyPI',         // Python packages
+  'Go',           // Go modules
+  'NuGet',        // .NET packages
+  'Pub',          // Dart/Flutter packages
+  'Ubuntu',       // Ubuntu Linux advisories
+  'Linux',        // Linux kernel
+  'GitHub Actions', // GitHub Actions
+  'VSCode',       // VS Code extensions
+];
 // Max items to fetch per ecosystem per run
 const MAX_PER_ECOSYSTEM = 20;
 
