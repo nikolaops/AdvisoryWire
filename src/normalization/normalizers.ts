@@ -38,16 +38,33 @@ export class OsvNormalizer implements Normalizer {
     const osvId = rawItem.id || 'UNKNOWN';
     const cveIds = (rawItem.aliases || []).filter((alias: string) => alias.startsWith('CVE-'));
     
-    // Determine severity from CVSS if available
+    // Determine severity - prefer database_specific.severity string (e.g. "HIGH", "CRITICAL")
     let severity: Severity = 'unknown';
-    if (rawItem.severity && rawItem.severity.length > 0) {
-      const cvss = rawItem.severity.find((s: any) => s.type === 'CVSS_V3');
-      if (cvss) {
-        const score = parseFloat(cvss.score.split(':')[1] || '0');
-        if (score >= 9.0) severity = 'critical';
-        else if (score >= 7.0) severity = 'high';
-        else if (score >= 4.0) severity = 'medium';
+    const dbSeverityStr: string | undefined = rawItem.database_specific?.severity;
+    if (dbSeverityStr && typeof dbSeverityStr === 'string') {
+      severity = normalizeSeverity(dbSeverityStr.toLowerCase());
+    } else if (rawItem.severity && rawItem.severity.length > 0) {
+      // OSV severity score field is a full CVSS vector string (e.g. "CVSS:3.1/AV:N/..."), not a number.
+      // Try database_specific.cvss.base_score if present (some sources include it)
+      const baseScore: number | undefined = rawItem.database_specific?.cvss?.base_score
+        ?? rawItem.database_specific?.cvss?.baseScore;
+      if (baseScore !== undefined) {
+        const s = parseFloat(String(baseScore));
+        if (s >= 9.0) severity = 'critical';
+        else if (s >= 7.0) severity = 'high';
+        else if (s >= 4.0) severity = 'medium';
         else severity = 'low';
+      } else {
+        // Fall back to CVSS_V4 or CVSS_V3 vector heuristic
+        const cvss = rawItem.severity.find((s: any) => s.type === 'CVSS_V3' || s.type === 'CVSS_V4');
+        if (cvss) {
+          // Heuristic: check C/I/A metric values in the vector; all H = critical, mix = high, etc.
+          const vector: string = cvss.score || '';
+          const criticalCount = (vector.match(/:[CH]/g) || []).length;
+          if (criticalCount >= 3) severity = 'critical';
+          else if (criticalCount >= 2) severity = 'high';
+          else severity = 'medium';
+        }
       }
     }
 
