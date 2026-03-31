@@ -41,8 +41,8 @@ export class GithubAdvisoryConnector extends BaseConnector {
 
   async fetch(sinceDate?: Date): Promise<SourceFetchResult> {
     try {
-      // Default lookback: 30 days on first run
-      const effectiveSince = sinceDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      // Default lookback: 3 days on first run
+      const effectiveSince = sinceDate ?? new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
       logger.info({ source: this.name, since: effectiveSince.toISOString() }, 'Fetching GitHub Advisory Database');
 
       const headers: Record<string, string> = {
