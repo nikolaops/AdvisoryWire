@@ -1,17 +1,17 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: advisory-notifier-db
+    container_name: advisorywire-db
     environment:
-      POSTGRES_DB: advisory_notifier
-      POSTGRES_USER: postgres
+      POSTGRES_DB: advisorywire_db
+      POSTGRES_USER: advisorywire
       POSTGRES_PASSWORD: postgres
     ports:
       - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - advisorywire_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U advisorywire"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -20,12 +20,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: advisory-notifier-app
+    container_name: advisorywire-app
     environment:
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
-      DATABASE_NAME: advisory_notifier
-      DATABASE_USER: postgres
+      DATABASE_NAME: advisorywire_db
+      DATABASE_USER: advisorywire
       DATABASE_PASSWORD: postgres
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID}
@@ -47,4 +47,4 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
+  advisorywire_postgres_data:
