@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: advisory-notifier-db
+    environment:
+      POSTGRES_DB: advisory_notifier
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: advisory-notifier-app
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: advisory_notifier
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_CHANNEL_ID: ${SLACK_CHANNEL_ID}
+      NODE_ENV: production
+      LOG_LEVEL: info
+      PORT: 3000
+      CISA_KEV_POLL_INTERVAL: "0 */6 * * *"
+      OSV_POLL_INTERVAL: "0 */6 * * *"
+      DIGEST_SCHEDULE: "0 9 * * *"
+      DIGEST_TIMEZONE: UTC
+      INSTANT_ALERT_SEVERITIES: critical,high
+      INSTANT_ALERT_IF_EXPLOITED: "true"
+      DIGEST_SEVERITIES: medium,low
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
