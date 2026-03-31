@@ -1,7 +1,7 @@
 import express, { Request, Response } from 'express';
-import { checkConnection } from '../persistence/database';
-import { SourceRepository } from '../persistence/repositories/source-repository';
-import logger from '../logging';
+import { checkConnection } from '../../persistence/database';
+import { SourceRepository, Source } from '../../persistence/repositories/source-repository';
+import logger from '../../logging';
 
 export function createHealthRouter(sourceRepo: SourceRepository): express.Router {
   const router = express.Router();
@@ -31,7 +31,7 @@ export function createHealthRouter(sourceRepo: SourceRepository): express.Router
 
       // Check sources status
       const sources = await sourceRepo.findAllEnabled();
-      const sourceStatus = sources.map(source => ({
+      const sourceStatus = sources.map((source: Source) => ({
         name: source.name,
         lastSuccess: source.lastSuccessAt,
         lastFailure: source.lastFailureAt,

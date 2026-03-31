@@ -32,7 +32,7 @@ export class SourceRepository {
       'SELECT * FROM sources WHERE enabled = true ORDER BY name'
     );
     
-    return result.rows.map(row => this.mapRow(row));
+    return result.rows.map((row: any) => this.mapRow(row));
   }
 
   async updateSuccess(id: number): Promise<void> {

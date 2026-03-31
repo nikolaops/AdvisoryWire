@@ -52,10 +52,10 @@ export class DigestService {
           );
         }
 
-        await this.digestRunRepo.updateSuccess(digestRunId, digestEligible.length, result.messageRef);
+        await this.digestRunRepo.updateSuccess(digestRunId, digestEligible.length, result.messageRef ?? null);
         logger.info({ count: digestEligible.length }, 'Digest completed successfully');
       } else {
-        await this.digestRunRepo.updateFailure(digestRunId, result.errorMessage || 'Unknown error');
+        await this.digestRunRepo.updateFailure(digestRunId, result.errorMessage ?? 'Unknown error');
         logger.error({ error: result.errorMessage }, 'Digest failed');
       }
     } catch (error: any) {

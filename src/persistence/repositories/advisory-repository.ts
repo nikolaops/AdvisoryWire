@@ -24,7 +24,7 @@ export class AdvisoryRepository {
       [cveId]
     );
 
-    return result.rows.map(row => this.mapRow(row));
+      return result.rows.map((row: any) => this.mapRow(row));
   }
 
   async checkDuplication(sourceId: number, externalId: string, rawHash: string): Promise<DeduplicationResult> {
