@@ -7,17 +7,18 @@ import logger from '../../logging';
 const OSV_GCS_LIST_URL = 'https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o';
 const OSV_GCS_DOWNLOAD_BASE = 'https://storage.googleapis.com/osv-vulnerabilities';
 
-// Ecosystems to monitor
+// Ecosystems to monitor (exact names from osv.dev/list)
 const ECOSYSTEMS = [
-  'npm',          // Node.js packages
-  'PyPI',         // Python packages
-  'Go',           // Go modules
-  'NuGet',        // .NET packages
-  'Pub',          // Dart/Flutter packages
-  'Ubuntu',       // Ubuntu Linux advisories
-  'Linux',        // Linux kernel
-  'GitHub Actions', // GitHub Actions
-  'VSCode',       // VS Code extensions
+  'npm',            // Node.js packages (216,497)
+  'PyPI',           // Python packages (18,308)
+  'Go',             // Go modules (6,293)
+  'NuGet',          // .NET packages (1,619)
+  'Pub',            // Dart/Flutter packages (10)
+  'Ubuntu',         // Ubuntu Linux advisories (51,672)
+  'Linux',          // Linux kernel (15,364)
+  'GIT',            // Git (79,668)
+  'GitHub Actions', // GitHub Actions (47)
+  'VSCode',         // VS Code extensions (18)
 ];
 // Max items to fetch per ecosystem per run
 const MAX_PER_ECOSYSTEM = 20;
