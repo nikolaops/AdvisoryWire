@@ -41,7 +41,9 @@ export class GithubAdvisoryConnector extends BaseConnector {
 
   async fetch(sinceDate?: Date): Promise<SourceFetchResult> {
     try {
-      logger.info({ source: this.name, sinceDate }, 'Fetching GitHub Advisory Database');
+      // Default lookback: 30 days on first run
+      const effectiveSince = sinceDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      logger.info({ source: this.name, since: effectiveSince.toISOString() }, 'Fetching GitHub Advisory Database');
 
       const headers: Record<string, string> = {
         'Accept': 'application/vnd.github+json',
@@ -59,11 +61,8 @@ export class GithubAdvisoryConnector extends BaseConnector {
         per_page: PER_PAGE,
         sort: 'published',
         direction: 'desc',
+        published: `>${effectiveSince.toISOString().split('T')[0]}`,
       };
-
-      if (sinceDate) {
-        params['published'] = `>${sinceDate.toISOString().split('T')[0]}`;
-      }
 
       const response = await axios.get<GitHubAdvisory[]>(GITHUB_ADVISORY_URL, {
         params,

@@ -77,6 +77,9 @@ export class OsvConnector extends BaseConnector {
   }
 
   private async fetchEcosystem(ecosystem: string, sinceDate?: Date): Promise<OsvVulnerability[]> {
+    // Default lookback: 30 days on first run
+    const effectiveSince = sinceDate ?? new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
     // List recent objects in GCS bucket for this ecosystem
     const listResponse = await axios.get<GcsListResponse>(OSV_GCS_LIST_URL, {
       params: {
@@ -96,10 +99,8 @@ export class OsvConnector extends BaseConnector {
       .filter(obj => obj.name.endsWith('.json'))
       .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
 
-    // Filter by sinceDate if provided
-    if (sinceDate) {
-      objects = objects.filter(obj => new Date(obj.updated) > sinceDate);
-    }
+    // Filter by effective since date (always set - either sinceDate or 30-day default)
+    objects = objects.filter(obj => new Date(obj.updated) > effectiveSince);
 
     objects = objects.slice(0, MAX_PER_ECOSYSTEM);
 
