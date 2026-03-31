@@ -103,96 +103,95 @@ export class SlackService {
   }
 
   private buildInstantAlertBlocks(advisory: StoredAdvisory): any[] {
-    const severityEmoji = {
+    const severityEmoji: Record<string, string> = {
       critical: '🔴',
       high: '🟠',
       medium: '🟡',
       low: '🟢',
       unknown: '⚪',
     };
+    const emoji = severityEmoji[advisory.severity] ?? '⚪';
+    const severityLabel = `${emoji} ${advisory.severity.toUpperCase()}`;
 
-    const exploitEmoji = advisory.exploitStatus === 'exploited' ? '💥 EXPLOITED' : '';
+    const exploited = advisory.exploitStatus === 'exploited';
 
-    const identifiers = advisory.cveIds.length > 0 
-      ? advisory.cveIds.join(', ') 
+    // Identifiers: prefer CVE IDs, fallback to externalId
+    const identifiers = advisory.cveIds.length > 0
+      ? advisory.cveIds.join(', ')
       : advisory.externalId;
+
+    // Source label: "NVD", "OSV - npm", "github-advisory"
+    const rawPayload = advisory.rawPayload || {};
+    const ecosystem: string | undefined = rawPayload._ecosystem;
+    const sourceLabel = advisory.source === 'osv' && ecosystem
+      ? `OSV - ${ecosystem}`
+      : advisory.source.toUpperCase().replace(/-/g, ' ');
+
+    // Dates
+    const publishedStr = advisory.publishedAt
+      ? advisory.publishedAt.toISOString().split('T')[0]
+      : '—';
+    const modifiedStr = advisory.modifiedAt
+      ? advisory.modifiedAt.toISOString().split('T')[0]
+      : null;
+
+    // Header line
+    const headerText = exploited
+      ? `🚨 ${severityLabel}  |  💥 EXPLOITED`
+      : `🚨 ${severityLabel}`;
+
+    // Primary link
+    const firstRef = advisory.references[0];
+    const titleText = firstRef
+      ? `*<${firstRef.url}|${advisory.title}>*`
+      : `*${advisory.title}*`;
 
     const blocks: any[] = [
       {
         type: 'header',
-        text: {
-          type: 'plain_text',
-          text: `🚨 Security Advisory`,
-        },
+        text: { type: 'plain_text', text: headerText, emoji: true },
       },
       {
         type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${advisory.title}*`,
-        },
+        text: { type: 'mrkdwn', text: titleText },
       },
       {
         type: 'section',
         fields: [
-          {
-            type: 'mrkdwn',
-            text: `*Severity:*\n${severityEmoji[advisory.severity]} ${advisory.severity.toUpperCase()}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Source:*\n${advisory.source}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Identifiers:*\n${identifiers}`,
-          },
-          {
-            type: 'mrkdwn',
-            text: `*Published:*\n${advisory.publishedAt.toISOString().split('T')[0]}`,
-          },
+          { type: 'mrkdwn', text: `*🔍 Identifiers*\n\`${identifiers}\`` },
+          { type: 'mrkdwn', text: `*📡 Source*\n${sourceLabel}` },
+          { type: 'mrkdwn', text: `*📅 Published*\n${publishedStr}` },
+          { type: 'mrkdwn', text: modifiedStr
+              ? `*🔄 Last Modified*\n${modifiedStr}`
+              : `*🏷 Vendor*\n${advisory.vendor || '—'}` },
         ],
       },
     ];
-
-    if (exploitEmoji) {
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*⚠️ Status:* ${exploitEmoji}`,
-        },
-      });
-    }
 
     if (advisory.summary) {
       blocks.push({
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Summary:*\n${advisory.summary.substring(0, 500)}${advisory.summary.length > 500 ? '...' : ''}`,
+          text: `*📝 Summary*\n${advisory.summary.substring(0, 600)}${advisory.summary.length > 600 ? '...' : ''}`,
         },
       });
     }
 
-    if (advisory.references.length > 0) {
-      const refText = advisory.references
-        .slice(0, 3)
-        .map(ref => `• <${ref.url}|${ref.label || ref.url}>`)
-        .join('\n');
-
+    // Up to 3 references as buttons
+    const refLinks = advisory.references.slice(0, 3);
+    if (refLinks.length > 0) {
       blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*References:*\n${refText}`,
-        },
+        type: 'actions',
+        elements: refLinks.map(ref => ({
+          type: 'button',
+          text: { type: 'plain_text', text: ref.label || 'View Advisory', emoji: true },
+          url: ref.url,
+        })),
       });
     }
 
-    blocks.push({
-      type: 'divider',
-    });
+    blocks.push({ type: 'divider' });
 
     return blocks;
   }

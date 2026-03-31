@@ -130,6 +130,8 @@ export class OsvConnector extends BaseConnector {
           if (!modifiedDate || modifiedDate <= effectiveSince) {
             continue; // Skip - OSV hasn't touched this record recently
           }
+          // Tag ecosystem so normalizer can use it for source label
+          (res.data as any)._ecosystem = ecosystem;
           vulns.push(res.data);
         }
       } catch {

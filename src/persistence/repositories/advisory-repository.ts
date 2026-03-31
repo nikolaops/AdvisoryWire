@@ -141,7 +141,21 @@ export class AdvisoryRepository {
 
   async findById(id: number): Promise<StoredAdvisory | null> {
     const result = await query(
-      'SELECT * FROM advisories WHERE id = $1',
+      `SELECT a.*, s.name as source_name,
+        COALESCE(
+          json_agg(DISTINCT jsonb_build_object('type', ai.identifier_type, 'value', ai.identifier_value))
+          FILTER (WHERE ai.id IS NOT NULL), '[]'
+        ) as identifiers,
+        COALESCE(
+          json_agg(DISTINCT jsonb_build_object('url', ar.url, 'label', ar.label))
+          FILTER (WHERE ar.id IS NOT NULL), '[]'
+        ) as refs
+       FROM advisories a
+       JOIN sources s ON s.id = a.source_id
+       LEFT JOIN advisory_identifiers ai ON ai.advisory_id = a.id
+       LEFT JOIN advisory_references ar ON ar.advisory_id = a.id
+       WHERE a.id = $1
+       GROUP BY a.id, s.name`,
       [id]
     );
 
@@ -170,19 +184,29 @@ export class AdvisoryRepository {
   }
 
   private mapRow(row: any): StoredAdvisory {
+    const identifiers: Array<{type: string; value: string}> = row.identifiers || [];
+    const cveIds = identifiers
+      .filter((i: any) => i.type === 'CVE')
+      .map((i: any) => i.value);
+
+    const refs: Array<{url: string; label: string | null}> = (row.refs || []).map((r: any) => ({
+      url: r.url,
+      label: r.label || null,
+    }));
+
     return {
       id: row.id,
       sourceId: row.source_id,
       externalId: row.external_id,
-      source: 'stored',
+      source: row.source_name || row.source || 'unknown',
       title: row.title,
       summary: row.summary,
       severity: row.severity,
       vendor: row.vendor,
       publishedAt: row.published_at,
       updatedAt: row.updated_at,
-      cveIds: [],
-      references: [],
+      cveIds,
+      references: refs,
       tags: [],
       exploitStatus: row.exploit_status,
       status: row.status,
