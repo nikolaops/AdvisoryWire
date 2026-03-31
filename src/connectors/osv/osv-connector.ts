@@ -128,12 +128,6 @@ export class OsvConnector extends BaseConnector {
         // Skip individual failures
       }
     }
-          vulns.push(res.data);
-        }
-      } catch {
-        // Skip individual failures
-      }
-    }
 
     return vulns;
   }
