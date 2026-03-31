@@ -124,9 +124,21 @@ export class PipelineOrchestrator {
       // Route
       const routingDecision = this.routingService.route(normalized);
 
-      // Notify if instant alert
-      if (routingDecision.routingClass === 'instant_alert') {
+      // Skip instant alert for advisories published more than 7 days ago
+      // This prevents notification floods when DB is fresh or app restarts
+      const daysSincePublished = Math.floor(
+        (Date.now() - normalized.publishedAt.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      const isFresh = daysSincePublished <= 7;
+
+      // Notify if instant alert and fresh
+      if (routingDecision.routingClass === 'instant_alert' && isFresh) {
         await this.sendInstantNotification(advisoryId);
+      } else if (!isFresh) {
+        logger.debug(
+          { externalId: normalized.externalId, daysSincePublished },
+          'Advisory too old for instant alert, storing silently'
+        );
       }
     }
   }
