@@ -22,6 +22,7 @@ export interface Config {
   polling: {
     githubAdvisoryInterval: string;
     osvInterval: string;
+    nvdInterval: string;
   };
   digest: {
     schedule: string;
@@ -62,6 +63,7 @@ export const config: Config = {
   polling: {
     githubAdvisoryInterval: getEnvVar('GITHUB_ADVISORY_POLL_INTERVAL', '0 */6 * * *'),
     osvInterval: getEnvVar('OSV_POLL_INTERVAL', '0 */6 * * *'),
+    nvdInterval: getEnvVar('NVD_POLL_INTERVAL', '0 */6 * * *'),
   },
   digest: {
     schedule: getEnvVar('DIGEST_SCHEDULE', '0 9 * * *'),

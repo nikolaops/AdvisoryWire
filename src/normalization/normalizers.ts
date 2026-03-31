@@ -146,3 +146,68 @@ export class OsvNormalizer implements Normalizer {
     };
   }
 }
+
+export class NvdNormalizer implements Normalizer {
+  normalize(rawItem: any): NormalizedAdvisory {
+    const cveId: string = rawItem.id || 'UNKNOWN';
+
+    // Pick best available CVSS score: V3.1 > V3.0 > V2
+    let severity: Severity = 'unknown';
+    let cvssScore: number | null = null;
+    let cvssVector: string | null = null;
+
+    const v31 = rawItem.metrics?.cvssMetricV31?.[0];
+    const v30 = rawItem.metrics?.cvssMetricV30?.[0];
+    const v2 = rawItem.metrics?.cvssMetricV2?.[0];
+
+    if (v31) {
+      cvssScore = v31.cvssData.baseScore;
+      cvssVector = v31.cvssData.vectorString;
+      severity = normalizeSeverity(v31.cvssData.baseSeverity);
+    } else if (v30) {
+      cvssScore = v30.cvssData.baseScore;
+      cvssVector = v30.cvssData.vectorString;
+      severity = normalizeSeverity(v30.cvssData.baseSeverity);
+    } else if (v2) {
+      cvssScore = v2.cvssData.baseScore;
+      cvssVector = v2.cvssData.vectorString;
+      severity = normalizeSeverity(v2.baseSeverity);
+    }
+
+    // CISA KEV flag - NVD includes cisaExploitAdd date when CVE is in KEV
+    const exploitStatus: ExploitStatus = rawItem.cisaExploitAdd ? 'exploited' : 'unknown';
+
+    const description = rawItem.descriptions?.find((d: any) => d.lang === 'en')?.value ?? '';
+
+    const references = (rawItem.references ?? []).map((ref: any) => ({
+      url: ref.url,
+      label: ref.tags?.[0] ?? null,
+    }));
+    references.unshift({
+      url: `https://nvd.nist.gov/vuln/detail/${cveId}`,
+      label: 'NVD',
+    });
+
+    const tags: string[] = [];
+    if (rawItem.cisaExploitAdd) tags.push('cisa-kev');
+    if (cvssScore !== null && cvssScore >= 9.0) tags.push('critical-cvss');
+
+    return {
+      externalId: cveId,
+      source: 'nvd',
+      title: rawItem.cisaVulnerabilityName || description.substring(0, 120) || cveId,
+      summary: description,
+      severity,
+      publishedAt: normalizeDate(rawItem.published) || new Date(),
+      updatedAt: normalizeDate(rawItem.lastModified),
+      vendor: rawItem.sourceIdentifier ?? null,
+      cveIds: [cveId],
+      references,
+      tags,
+      exploitStatus,
+      status: 'active' as AdvisoryStatus,
+      rawPayload: rawItem,
+      rawHash: generateHash(rawItem),
+    };
+  }
+}

@@ -56,6 +56,25 @@ export class Scheduler {
       logger.info({ schedule: config.polling.osvInterval }, 'OSV polling scheduled');
     }
 
+    // Schedule NVD polling
+    const nvdConnector = connectors.find(c => c.name === 'nvd');
+    if (nvdConnector) {
+      const nvdJob = cron.schedule(
+        config.polling.nvdInterval,
+        () => {
+          logger.info('NVD scheduled job triggered');
+          this.orchestrator.processSource(nvdConnector).catch(error => {
+            logger.error({ error }, 'NVD processing failed');
+          });
+        },
+        {
+          timezone: config.digest.timezone,
+        }
+      );
+      this.jobs.push(nvdJob);
+      logger.info({ schedule: config.polling.nvdInterval }, 'NVD polling scheduled');
+    }
+
     // Schedule daily digest
     const digestJob = cron.schedule(
       config.digest.schedule,
