@@ -41,9 +41,8 @@ export class GithubAdvisoryConnector extends BaseConnector {
 
   async fetch(sinceDate?: Date): Promise<SourceFetchResult> {
     try {
-      // First run (no sinceDate): baseline only, fetch nothing
-      // After downtime: cap lookback to max 2h to prevent notification floods
-      const maxLookback = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      // Never look back more than 1h regardless of downtime or sinceDate
+      const maxLookback = new Date(Date.now() - 60 * 60 * 1000);
       const effectiveSince = sinceDate
         ? (sinceDate > maxLookback ? sinceDate : maxLookback)
         : new Date();
