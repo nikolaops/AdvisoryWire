@@ -13,6 +13,8 @@ interface Migration {
 const migrations: Migration[] = [
   { name: '001_initial_schema', path: join(MIGRATIONS_DIR, '001_initial_schema.sql') },
   { name: '002_seed_sources', path: join(MIGRATIONS_DIR, '002_seed_sources.sql') },
+  { name: '003_replace_cisa_with_github', path: join(MIGRATIONS_DIR, '003_replace_cisa_with_github.sql') },
+  { name: '004_add_nvd_source', path: join(MIGRATIONS_DIR, '004_add_nvd_source.sql') },
 ];
 
 export async function runMigrations(): Promise<void> {
