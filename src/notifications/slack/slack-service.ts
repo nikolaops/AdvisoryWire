@@ -1,6 +1,6 @@
 import { WebClient } from '@slack/web-api';
 import { config } from '../../config';
-import { StoredAdvisory } from '../../shared';
+import { NormalizedAdvisory } from '../../shared';
 import logger from '../../logging';
 
 export interface SlackMessageResult {
@@ -16,9 +16,9 @@ export class SlackService {
     this.client = new WebClient(config.slack.botToken);
   }
 
-  async sendInstantAlert(advisory: StoredAdvisory): Promise<SlackMessageResult> {
+  async sendInstantAlert(advisory: NormalizedAdvisory): Promise<SlackMessageResult> {
     try {
-      logger.info({ advisoryId: advisory.id, externalId: advisory.externalId }, 'Sending instant alert');
+      logger.info({ externalId: advisory.externalId }, 'Sending instant alert');
 
       const blocks = this.buildInstantAlertBlocks(advisory);
 
@@ -30,7 +30,7 @@ export class SlackService {
 
       if (response.ok && response.ts) {
         logger.info(
-          { advisoryId: advisory.id, messageTs: response.ts },
+          { externalId: advisory.externalId, messageTs: response.ts },
           'Instant alert sent successfully'
         );
 
@@ -40,7 +40,7 @@ export class SlackService {
         };
       } else {
         const errorMessage = `Slack API returned not ok: ${response.error}`;
-        logger.error({ advisoryId: advisory.id, error: response.error }, 'Slack message failed');
+        logger.error({ externalId: advisory.externalId, error: response.error }, 'Slack message failed');
         
         return {
           success: false,
@@ -49,7 +49,7 @@ export class SlackService {
       }
     } catch (error: any) {
       const errorMessage = error?.message || String(error);
-      logger.error({ error, advisoryId: advisory.id }, 'Failed to send instant alert');
+      logger.error({ error, externalId: advisory.externalId }, 'Failed to send instant alert');
       
       return {
         success: false,
@@ -58,7 +58,7 @@ export class SlackService {
     }
   }
 
-  async sendDigest(advisories: StoredAdvisory[]): Promise<SlackMessageResult> {
+  async sendDigest(advisories: NormalizedAdvisory[]): Promise<SlackMessageResult> {
     try {
       logger.info({ count: advisories.length }, 'Sending daily digest');
 
@@ -102,7 +102,7 @@ export class SlackService {
     }
   }
 
-  private buildInstantAlertBlocks(advisory: StoredAdvisory): any[] {
+  private buildInstantAlertBlocks(advisory: NormalizedAdvisory): any[] {
     const severityEmoji: Record<string, string> = {
       critical: '🔴',
       high: '🟠',
@@ -131,8 +131,8 @@ export class SlackService {
     const publishedStr = advisory.publishedAt
       ? advisory.publishedAt.toISOString().split('T')[0]
       : '—';
-    const modifiedStr = advisory.modifiedAt
-      ? advisory.modifiedAt.toISOString().split('T')[0]
+    const modifiedStr = advisory.updatedAt
+      ? advisory.updatedAt.toISOString().split('T')[0]
       : null;
 
     // Header line
@@ -196,7 +196,7 @@ export class SlackService {
     return blocks;
   }
 
-  private buildDigestBlocks(advisories: StoredAdvisory[]): any[] {
+  private buildDigestBlocks(advisories: NormalizedAdvisory[]): any[] {
     const blocks: any[] = [
       {
         type: 'header',
@@ -218,7 +218,7 @@ export class SlackService {
     ];
 
     // Group by severity
-    const bySeverity: Record<string, StoredAdvisory[]> = {
+    const bySeverity: Record<string, NormalizedAdvisory[]> = {
       critical: [],
       high: [],
       medium: [],
