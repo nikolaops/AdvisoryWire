@@ -9,7 +9,7 @@ RUN npm install --ignore-scripts
 COPY tsconfig.json ./
 COPY src/ ./src/
 
-RUN npx tsc --outDir dist
+RUN npx tsc -p tsconfig.lambda.json
 
 # Runtime stage — Lambda provided runtime
 FROM public.ecr.aws/lambda/nodejs:20

@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "src/api",
+    "src/app",
+    "src/persistence",
+    "src/scheduler",
+    "src/dedup",
+    "src/pipeline/orchestrator.ts",
+    "src/pipeline/digest-service.ts"
+  ]
+}
