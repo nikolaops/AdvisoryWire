@@ -18,6 +18,14 @@ export class Scheduler {
 
     const connectors = getConnectors();
 
+    // Run all sources immediately on startup (catch any missed advisories)
+    logger.info('Running immediate startup poll for all sources');
+    for (const connector of connectors) {
+      this.orchestrator.processSource(connector).catch(error => {
+        logger.error({ error, source: connector.name }, 'Startup poll failed');
+      });
+    }
+
     // Schedule GitHub Advisory polling
     const githubConnector = connectors.find(c => c.name === 'github-advisory');
     if (githubConnector) {
