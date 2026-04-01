@@ -6,7 +6,7 @@ WORKDIR /build
 COPY package.json package-lock.json* ./
 RUN npm install --ignore-scripts
 
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.lambda.json ./
 COPY src/ ./src/
 
 RUN npx tsc -p tsconfig.lambda.json
