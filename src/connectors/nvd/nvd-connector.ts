@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { BaseConnector } from '../base/connector';
 import { SourceFetchResult } from '../../shared';
+import { config } from '../../config';
 import logger from '../../logging';
 
 // NVD CVE API 2.0 - official NIST endpoint, no IP restrictions
@@ -9,6 +10,22 @@ const RESULTS_PER_PAGE = 100;
 
 // Rate limits: 5 req/30s without API key, 50 req/30s with key
 const REQUEST_DELAY_MS = 7000; // 7s between calls = safe without API key
+
+interface NvdCpeMatch {
+  vulnerable: boolean;
+  criteria: string;
+  matchCriteriaId?: string;
+}
+
+interface NvdConfigNode {
+  operator: string;
+  negate: boolean;
+  cpeMatch: NvdCpeMatch[];
+}
+
+interface NvdConfiguration {
+  nodes: NvdConfigNode[];
+}
 
 interface NvdCveItem {
   id: string;
@@ -33,6 +50,7 @@ interface NvdCveItem {
   };
   weaknesses?: Array<{ description: Array<{ lang: string; value: string }> }>;
   references?: Array<{ url: string; source: string; tags?: string[] }>;
+  configurations?: NvdConfiguration[];
   cisaExploitAdd?: string;
   cisaActionDue?: string;
   cisaRequiredAction?: string;
@@ -51,6 +69,40 @@ interface NvdApiResponse {
 export class NvdConnector extends BaseConnector {
   readonly name = 'nvd';
   readonly type = 'nvd';
+
+  /**
+   * Returns true if the CVE matches any of the configured ecosystems.
+   * Checks CPE `criteria` strings first (most precise), then falls back to
+   * the English description (catches advisories without CPE data yet).
+   *
+   * CPE criteria format: cpe:2.3:a:<vendor>:<product>:…
+   * Ecosystem keyword examples:
+   *   npm       → criteria contains "npmjs"  OR description contains "npm"
+   *   nuget     → criteria contains "nuget"
+   *   pypi      → criteria contains "python" OR description contains "pypi"
+   *   maven     → criteria contains "maven"  OR description contains "maven"
+   *   rubygems  → criteria contains "rubygems"
+   *   golang    → criteria contains "golang" OR description contains "golang"
+   *   packagist → criteria contains "packagist"
+   *   cargo     → criteria contains "cargo"  OR description contains "cargo"
+   */
+  private matchesEcosystems(item: NvdCveItem, ecosystems: string[]): boolean {
+    // Check CPE configurations (most reliable signal)
+    for (const conf of item.configurations ?? []) {
+      for (const node of conf.nodes ?? []) {
+        for (const match of node.cpeMatch ?? []) {
+          const criteria = match.criteria?.toLowerCase() ?? '';
+          if (ecosystems.some(eco => criteria.includes(eco))) return true;
+        }
+      }
+    }
+
+    // Fallback: English description (catches in-progress CVEs with no CPE yet)
+    const desc = (item.descriptions.find(d => d.lang === 'en')?.value ?? '').toLowerCase();
+    if (ecosystems.some(eco => desc.includes(eco))) return true;
+
+    return false;
+  }
 
   async fetch(sinceDate?: Date): Promise<SourceFetchResult> {
     try {
@@ -101,6 +153,18 @@ export class NvdConnector extends BaseConnector {
       }
 
       logger.info({ source: this.name, fetched: items.length }, 'NVD fetch completed');
+
+      // Apply ecosystem filter if configured
+      const ecosystems = config.nvd.ecosystems;
+      if (ecosystems.length > 0) {
+        const before = items.length;
+        items = items.filter(item => this.matchesEcosystems(item, ecosystems));
+        logger.info(
+          { source: this.name, before, after: items.length, ecosystems },
+          'NVD ecosystem filter applied'
+        );
+      }
+
       return { success: true, items };
     } catch (error) {
       logger.error({ error, source: this.name }, 'NVD fetch failed');

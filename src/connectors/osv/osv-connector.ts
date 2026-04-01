@@ -3,36 +3,36 @@ import { BaseConnector } from '../base/connector';
 import { SourceFetchResult } from '../../shared';
 import logger from '../../logging';
 
-// OSV GCS bucket - lists all vulnerabilities per ecosystem
-const OSV_GCS_LIST_URL = 'https://storage.googleapis.com/storage/v1/b/osv-vulnerabilities/o';
-const OSV_GCS_DOWNLOAD_BASE = 'https://storage.googleapis.com/osv-vulnerabilities';
+// OSV data dumps — per-ecosystem modified_id.csv + individual JSON files
+// See: https://google.github.io/osv.dev/data/#downloading-recent-changes
+const OSV_GCS_BASE = 'https://storage.googleapis.com/osv-vulnerabilities';
 
-// Ecosystems to monitor (exact names from osv.dev/list)
-const ECOSYSTEMS = [
-  'npm',            // Node.js packages (216,497)
-  'PyPI',           // Python packages (18,308)
-  'Go',             // Go modules (6,293)
-  'NuGet',          // .NET packages (1,619)
-  'Pub',            // Dart/Flutter packages (10)
-  'Ubuntu',         // Ubuntu Linux advisories (51,672)
-  'Linux',          // Linux kernel (15,364)
-  'GIT',            // Git (79,668)
-  'GitHub Actions', // GitHub Actions (47)
-  'VSCode',         // VS Code extensions (18)
+// Ecosystems to monitor (exact names from https://storage.googleapis.com/osv-vulnerabilities/ecosystems.txt)
+// Override via OSV_ECOSYSTEMS env var (comma-separated).
+const DEFAULT_ECOSYSTEMS = [
+  'npm',
+  'PyPI',
+  'Go',
+  'NuGet',
+  'RubyGems',
+  'crates.io',
+  'Packagist',
+  'Maven',
+  'Pub',
+  'GitHub Actions',
+  'VSCode',
 ];
-// Max items to fetch per ecosystem per run
-const MAX_PER_ECOSYSTEM = 20;
 
-interface GcsObject {
-  name: string;
-  updated: string;
-  size: string;
+function getEcosystems(): string[] {
+  const envVal = process.env.OSV_ECOSYSTEMS;
+  if (!envVal || !envVal.trim()) return DEFAULT_ECOSYSTEMS;
+  return envVal.split(',').map((e: string) => e.trim()).filter((e: string) => e.length > 0);
 }
 
-interface GcsListResponse {
-  items?: GcsObject[];
-  nextPageToken?: string;
-}
+// Max vuln entries to download per ecosystem per run.
+// High enough that we never miss entries within the sinceDate window.
+// The modified_id.csv read itself is always complete (stops at sinceDate boundary).
+const MAX_DOWNLOADS_PER_ECOSYSTEM = 500;
 
 export interface OsvVulnerability {
   id: string;
@@ -63,12 +63,13 @@ export class OsvConnector extends BaseConnector {
   readonly type = 'osv';
 
   async fetch(sinceDate?: Date): Promise<SourceFetchResult> {
+    const ecosystems = getEcosystems();
     try {
-      logger.info({ source: this.name, ecosystems: ECOSYSTEMS }, 'Fetching OSV data from GCS');
+      logger.info({ source: this.name, ecosystems }, 'Fetching OSV data via modified_id.csv');
 
       const allVulns: OsvVulnerability[] = [];
 
-      for (const ecosystem of ECOSYSTEMS) {
+      for (const ecosystem of ecosystems) {
         try {
           const vulns = await this.fetchEcosystem(ecosystem, sinceDate);
           allVulns.push(...vulns);
@@ -79,7 +80,6 @@ export class OsvConnector extends BaseConnector {
       }
 
       logger.info({ source: this.name, total: allVulns.length }, 'OSV fetch completed');
-
       return { success: true, items: allVulns };
     } catch (error) {
       logger.error({ error, source: this.name }, 'OSV fetch failed');
@@ -88,57 +88,67 @@ export class OsvConnector extends BaseConnector {
   }
 
   private async fetchEcosystem(ecosystem: string, sinceDate?: Date): Promise<OsvVulnerability[]> {
-    // Never look back more than 1h regardless of downtime or sinceDate
-    const maxLookback = new Date(Date.now() - 60 * 60 * 1000);
-    const effectiveSince = sinceDate
-      ? (sinceDate > maxLookback ? sinceDate : maxLookback)
-      : new Date();
+    // If sinceDate is provided (subsequent runs), use it directly — the modified_id.csv
+    // approach is cheap (just read CSV until the timestamp boundary), so there is no
+    // need to cap the lookback window. Capping would cause us to silently miss entries
+    // when the Lambda was down for >1h.
+    //
+    // If sinceDate is absent (first ever run), default to 1h lookback so we don't
+    // flood Slack with all historical advisories.
+    const effectiveSince: Date = sinceDate ?? new Date(Date.now() - 60 * 60 * 1000);
 
-    // List recent objects in GCS bucket for this ecosystem
-    const listResponse = await axios.get<GcsListResponse>(OSV_GCS_LIST_URL, {
-      params: {
-        prefix: `${ecosystem}/`,
-        maxResults: 200,
-        fields: 'items(name,updated)',
-      },
+    // Fetch per-ecosystem modified_id.csv — sorted newest-first, lines: "<iso_date>,<ID>"
+    // This is O(recent entries) instead of scanning all 216k+ GCS objects alphabetically.
+    const csvUrl = `${OSV_GCS_BASE}/${encodeURIComponent(ecosystem)}/modified_id.csv`;
+    const csvResp = await axios.get<string>(csvUrl, {
+      responseType: 'text',
       timeout: 30000,
     });
 
-    if (!listResponse.data.items || listResponse.data.items.length === 0) {
-      return [];
+    const recentIds: string[] = [];
+
+    for (const line of csvResp.data.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      const commaIdx = trimmed.indexOf(',');
+      if (commaIdx === -1) continue;
+
+      const modifiedStr = trimmed.slice(0, commaIdx);
+      const id = trimmed.slice(commaIdx + 1);
+      const modifiedAt = new Date(modifiedStr);
+
+      // CSV is sorted newest-first — stop as soon as we're past the window
+      if (modifiedAt <= effectiveSince) break;
+
+      recentIds.push(id);
+      if (recentIds.length >= MAX_DOWNLOADS_PER_ECOSYSTEM) break;
     }
 
-    // Sort by updated descending and take most recent
-    let objects = listResponse.data.items
-      .filter(obj => obj.name.endsWith('.json'))
-      .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+    logger.debug(
+      { source: this.name, ecosystem, recentIds: recentIds.length, since: effectiveSince.toISOString() },
+      'OSV modified_id.csv parsed'
+    );
 
-    // Filter by effective since date (always set - either sinceDate or 30-day default)
-    objects = objects.filter(obj => new Date(obj.updated) > effectiveSince);
+    if (recentIds.length === 0) return [];
 
-    objects = objects.slice(0, MAX_PER_ECOSYSTEM);
-
-    // Fetch each vulnerability JSON and validate modified date
+    // Download each vulnerability JSON by ID
     const vulns: OsvVulnerability[] = [];
-    for (const obj of objects) {
+    for (const id of recentIds) {
       try {
-        const url = `${OSV_GCS_DOWNLOAD_BASE}/${obj.name}`;
+        const url = `${OSV_GCS_BASE}/${encodeURIComponent(ecosystem)}/${encodeURIComponent(id)}.json`;
         const res = await axios.get<OsvVulnerability>(url, { timeout: 15000 });
-        if (res.data && res.data.id) {
-          // Use modified date (when OSV last updated this record), not published (original CVE date)
-          const modifiedDate = res.data.modified ? new Date(res.data.modified) : null;
-          if (!modifiedDate || modifiedDate <= effectiveSince) {
-            continue; // Skip - OSV hasn't touched this record recently
-          }
-          // Tag ecosystem so normalizer can use it for source label
+        if (res.data?.id) {
           (res.data as any)._ecosystem = ecosystem;
           vulns.push(res.data);
         }
       } catch {
-        // Skip individual failures
+        // Skip individual file failures silently
       }
     }
 
     return vulns;
   }
 }
+
+

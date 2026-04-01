@@ -15,6 +15,12 @@ export interface Config {
     instantAlertIfExploited: boolean;
     digestSeverities: string[];
   };
+  nvd: {
+    // Empty array = fetch everything. Otherwise only CVEs matching these ecosystems are kept.
+    // Match against CPE configuration strings and English descriptions.
+    // Examples: npm, nuget, pypi, maven, rubygems, golang, packagist, cargo
+    ecosystems: string[];
+  };
 }
 
 function getEnvVar(key: string, defaultValue?: string): string {
@@ -37,5 +43,11 @@ export const config: Config = {
     instantAlertSeverities: getEnvVar('INSTANT_ALERT_SEVERITIES', 'critical,high').split(','),
     instantAlertIfExploited: getEnvVar('INSTANT_ALERT_IF_EXPLOITED', 'true') === 'true',
     digestSeverities: getEnvVar('DIGEST_SEVERITIES', 'medium,low').split(','),
+  },
+  nvd: {
+    ecosystems: getEnvVar('NVD_ECOSYSTEMS', '')
+      .split(',')
+      .map(e => e.trim().toLowerCase())
+      .filter(e => e.length > 0),
   },
 };

@@ -11,7 +11,7 @@ import { getSecrets } from '../secrets';
 import { NormalizedAdvisory } from '../shared';
 import logger from '../logging';
 
-const SOURCES = ['nvd', 'osv', 'github-advisory'] as const;
+const SOURCES = ['osv', 'github-advisory', 'nvd'] as const;
 type SourceName = typeof SOURCES[number];
 
 // EventBridge event—either a specific source or "all" (default)
