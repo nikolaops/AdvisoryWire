@@ -5,11 +5,6 @@ dotenv.config();
 export interface Config {
   dynamodb: {
     tableName: string;
-    region: string;
-  };
-  slack: {
-    botToken: string;
-    channelId: string;
   };
   app: {
     nodeEnv: string;
@@ -33,11 +28,6 @@ function getEnvVar(key: string, defaultValue?: string): string {
 export const config: Config = {
   dynamodb: {
     tableName: getEnvVar('DYNAMODB_TABLE', 'advisorywire'),
-    region: getEnvVar('AWS_REGION', 'eu-west-1'),
-  },
-  slack: {
-    botToken: getEnvVar('SLACK_BOT_TOKEN'),
-    channelId: getEnvVar('SLACK_CHANNEL_ID'),
   },
   app: {
     nodeEnv: getEnvVar('NODE_ENV', 'production'),

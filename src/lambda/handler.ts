@@ -7,6 +7,7 @@ import { RoutingService } from '../routing/routing-service';
 import { SlackService } from '../notifications/slack/slack-service';
 import { getCheckpoint, saveCheckpoint } from '../dynamodb/checkpoint-service';
 import { checkAndMarkSeen } from '../dynamodb/dedup-service';
+import { getSecrets } from '../secrets';
 import { NormalizedAdvisory } from '../shared';
 import logger from '../logging';
 
@@ -31,9 +32,23 @@ const connectors: Record<SourceName, { fetch: (since?: Date) => Promise<any> }> 
 };
 
 const routingService = new RoutingService(new ScoringService());
-const slackService = new SlackService();
+
+// SlackService is initialized on first invocation (after secrets are loaded)
+let slackService: SlackService | null = null;
 
 export const handler = async (event: LambdaEvent) => {
+  // Fetch secrets once per cold start — cached for warm invocations
+  const secrets = await getSecrets();
+
+  // Inject optional API keys into process.env so connectors pick them up
+  if (secrets.GITHUB_TOKEN) process.env.GITHUB_TOKEN = secrets.GITHUB_TOKEN;
+  if (secrets.NVD_API_KEY) process.env.NVD_API_KEY = secrets.NVD_API_KEY;
+
+  // Initialize SlackService lazily (reused across warm invocations)
+  if (!slackService) {
+    slackService = new SlackService(secrets.SLACK_BOT_TOKEN, secrets.SLACK_CHANNEL_ID);
+  }
+
   const sourcesToRun: SourceName[] =
     event.source && event.source !== 'all'
       ? [event.source as SourceName]
@@ -43,7 +58,7 @@ export const handler = async (event: LambdaEvent) => {
 
   for (const sourceName of sourcesToRun) {
     try {
-      results[sourceName] = await processSource(sourceName);
+      results[sourceName] = await processSource(sourceName, slackService);
     } catch (err) {
       logger.error({ source: sourceName, err }, 'Source processing failed');
       results[sourceName] = { fetched: 0, sent: 0, deduped: 0 };
@@ -54,7 +69,7 @@ export const handler = async (event: LambdaEvent) => {
   return { statusCode: 200, results };
 };
 
-async function processSource(sourceName: SourceName): Promise<SourceResult> {
+async function processSource(sourceName: SourceName, slackService: SlackService): Promise<SourceResult> {
   logger.info({ source: sourceName }, 'Processing source');
 
   const connector = connectors[sourceName];

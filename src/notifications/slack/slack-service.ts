@@ -1,5 +1,4 @@
 import { WebClient } from '@slack/web-api';
-import { config } from '../../config';
 import { NormalizedAdvisory } from '../../shared';
 import logger from '../../logging';
 
@@ -11,9 +10,11 @@ export interface SlackMessageResult {
 
 export class SlackService {
   private client: WebClient;
+  private channelId: string;
 
-  constructor() {
-    this.client = new WebClient(config.slack.botToken);
+  constructor(botToken: string, channelId: string) {
+    this.client = new WebClient(botToken);
+    this.channelId = channelId;
   }
 
   async sendInstantAlert(advisory: NormalizedAdvisory): Promise<SlackMessageResult> {
@@ -23,7 +24,7 @@ export class SlackService {
       const blocks = this.buildInstantAlertBlocks(advisory);
 
       const response = await this.client.chat.postMessage({
-        channel: config.slack.channelId,
+        channel: this.channelId,
         text: `🚨 Security Advisory: ${advisory.title}`,
         blocks,
       });
@@ -70,7 +71,7 @@ export class SlackService {
       const blocks = this.buildDigestBlocks(advisories);
 
       const response = await this.client.chat.postMessage({
-        channel: config.slack.channelId,
+        channel: this.channelId,
         text: `📋 Daily Security Advisory Digest (${advisories.length} items)`,
         blocks,
       });
