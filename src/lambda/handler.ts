@@ -40,10 +40,6 @@ export const handler = async (event: LambdaEvent) => {
   // Fetch secrets once per cold start — cached for warm invocations
   const secrets = await getSecrets();
 
-  // Inject optional API keys into process.env so connectors pick them up
-  if (secrets.GITHUB_TOKEN) process.env.GITHUB_TOKEN = secrets.GITHUB_TOKEN;
-  if (secrets.NVD_API_KEY) process.env.NVD_API_KEY = secrets.NVD_API_KEY;
-
   // Initialize SlackService lazily (reused across warm invocations)
   if (!slackService) {
     slackService = new SlackService(secrets.SLACK_BOT_TOKEN, secrets.SLACK_CHANNEL_ID);

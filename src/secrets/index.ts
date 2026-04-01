@@ -4,8 +4,6 @@ import logger from '../logging';
 export interface AdvisoryWireSecrets {
   SLACK_BOT_TOKEN: string;
   SLACK_CHANNEL_ID: string;
-  GITHUB_TOKEN?: string;
-  NVD_API_KEY?: string;
 }
 
 // Cached per Lambda container lifetime (cold start fetches once, warm invocations reuse)
