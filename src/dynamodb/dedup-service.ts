@@ -6,9 +6,7 @@ const TABLE_NAME = process.env.DYNAMODB_TABLE ?? 'advisorywire';
 // TTL: 48 hours - enough to deduplicate across sources within same poll window
 const TTL_SECONDS = 48 * 60 * 60;
 
-const client = new DynamoDBClient({
-  region: process.env.AWS_REGION ?? 'eu-west-1',
-});
+const client = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(client);
 
 /**

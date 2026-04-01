@@ -4,9 +4,7 @@ import logger from '../logging';
 
 const TABLE_NAME = process.env.DYNAMODB_TABLE ?? 'advisorywire';
 
-const client = new DynamoDBClient({
-  region: process.env.AWS_REGION ?? 'eu-west-1',
-});
+const client = new DynamoDBClient({});
 const ddb = DynamoDBDocumentClient.from(client);
 
 /**
