@@ -1,4 +1,144 @@
-# Security Advisory Notifier
+# AdvisoryWire
+
+Security advisory aggregator that pulls from OSV, GitHub Advisory, and NVD — deduplicates, scores, and sends Slack alerts.
+
+> **Branch:** `lambda-aws` — AWS Lambda + DynamoDB deployment  
+> For Docker Compose / VPS deployment see the `main` branch.
+
+## How It Works
+
+Three EventBridge rules trigger the Lambda every 6 hours (staggered by 20 min):
+
+```
+OSV  :00  →  GitHub Advisory  :20  →  NVD  :40
+                    ↓
+              Normalize & score
+                    ↓
+          DynamoDB dedup (48h TTL)
+                    ↓
+     critical/exploited → instant Slack alert
+     medium/low         → skipped (no digest in Lambda mode)
+```
+
+Cross-source dedup: if OSV already sent CVE-2024-1234, NVD won't re-alert on the same CVE.
+
+## Prerequisites
+
+- AWS account with ECR, Lambda, DynamoDB, EventBridge, Secrets Manager
+- Slack Bot Token (`chat:write` scope) and Channel ID
+- Terraform (for infrastructure provisioning — see `codetiq-github/terraform/finansije`)
+
+## Deploy
+
+### 1. Provision infrastructure
+
+Infrastructure is managed via Terraform in `codetiq-github/terraform/finansije`. Apply in two steps — first ECR, then everything else — so the image can be pushed before Lambda is created.
+
+### 2. Build and push image
+
+```bash
+ECR=120569631504.dkr.ecr.eu-west-1.amazonaws.com/dev-advisorywire
+
+aws ecr get-login-password --region eu-west-1 --profile finansije \
+  | docker login --username AWS --password-stdin 120569631504.dkr.ecr.eu-west-1.amazonaws.com
+
+docker build --platform linux/amd64 --provenance=false \
+  -f Dockerfile.lambda \
+  -t $ECR:latest .
+
+docker push $ECR:latest
+```
+
+### 3. Apply remaining infrastructure
+
+Apply the remaining Terraform resources (Lambda, IAM, DynamoDB, EventBridge).
+
+### 4. Set Slack secrets
+
+```bash
+aws secretsmanager put-secret-value \
+  --region eu-west-1 \
+  --profile finansije \
+  --secret-id advisorywire \
+  --secret-string '{"SLACK_BOT_TOKEN":"xoxb-...","SLACK_CHANNEL_ID":"C05EAL8MJSE"}'
+```
+
+### Update image (after code changes)
+
+```bash
+docker build --platform linux/amd64 --provenance=false -f Dockerfile.lambda -t $ECR:latest . \
+  && docker push $ECR:latest
+
+aws lambda update-function-code \
+  --function-name finansije-advisorywire \
+  --image-uri $ECR:latest \
+  --region eu-west-1 \
+  --profile finansije
+```
+
+## Configuration
+
+All configuration is set as Lambda environment variables (managed via Terraform `advisorywire.tf`).
+
+| Variable | Default | Description |
+|---|---|---|
+| `DYNAMODB_TABLE` | `advisorywire` | DynamoDB table name |
+| `ADVISORYWIRE_SECRET_NAME` | `advisorywire` | Secrets Manager secret name |
+| `NODE_ENV` | `production` | Node environment |
+| `LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
+| `INSTANT_ALERT_SEVERITIES` | `critical,high` | Severity levels that trigger instant alert |
+| `INSTANT_ALERT_IF_EXPLOITED` | `true` | Alert immediately if exploit status is `exploited` |
+| `DIGEST_SEVERITIES` | `medium,low` | Severities routed to digest (currently not sent in Lambda mode) |
+| `NVD_ECOSYSTEMS` | *(empty = all)* | Comma-separated CPE keywords to filter NVD results |
+| `OSV_ECOSYSTEMS` | *(see below)* | Comma-separated OSV ecosystem names to monitor |
+
+### Monitored sources
+
+**OSV** (default ecosystems, overridable via `OSV_ECOSYSTEMS`):
+```
+Debian, Ubuntu, Alpine, Rocky Linux, AlmaLinux,
+npm, PyPI, Go, NuGet, Packagist, GitHub Actions, VSCode
+```
+
+**GitHub Advisory** — all advisories from the GitHub Advisory Database
+
+**NVD** (filtered via `NVD_ECOSYSTEMS`):
+```
+microsoft:windows, apple:macos, apple:mac_os_x
+```
+NVD filter matches against CPE configuration strings and CVE description text.
+Empty `NVD_ECOSYSTEMS` = no filter (fetches all CVEs).
+
+### GitHub Advisory rate limits
+
+Without a token: 60 requests/hour. With `GITHUB_TOKEN`: 5,000 requests/hour.  
+Token is optional — stored in Secrets Manager alongside Slack credentials if needed:
+```json
+{"SLACK_BOT_TOKEN":"xoxb-...","SLACK_CHANNEL_ID":"...","GITHUB_TOKEN":"ghp_..."}
+```
+
+### NVD API rate limits
+
+Without key: 5 requests / 30s. With `NVD_API_KEY`: 50 requests / 30s.  
+Free key: https://nvd.nist.gov/developers/request-an-api-key  
+Add to Secrets Manager:
+```json
+{"SLACK_BOT_TOKEN":"...","SLACK_CHANNEL_ID":"...","NVD_API_KEY":"..."}
+```
+
+## Local development
+
+```bash
+npm install
+npm test
+npm run build
+```
+
+The Lambda handler entry point is `src/lambda/handler.ts`. It can be invoked locally with:
+```bash
+node -e "require('./dist/lambda/handler').handler({ source: 'osv' })"
+```
+
 
 An MVP application that aggregates security advisories from trusted public sources, normalizes them into a common model, deduplicates them, scores and routes them using configurable rules, and sends notifications to Slack.
 
