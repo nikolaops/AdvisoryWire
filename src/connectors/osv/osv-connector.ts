@@ -10,15 +10,14 @@ const OSV_GCS_BASE = 'https://storage.googleapis.com/osv-vulnerabilities';
 // Ecosystems to monitor (exact names from https://storage.googleapis.com/osv-vulnerabilities/ecosystems.txt)
 // Override via OSV_ECOSYSTEMS env var (comma-separated).
 const DEFAULT_ECOSYSTEMS = [
+  'Debian',
+  'Ubuntu',
+  'Alpine',
   'npm',
   'PyPI',
   'Go',
   'NuGet',
-  'RubyGems',
-  'crates.io',
   'Packagist',
-  'Maven',
-  'Pub',
   'GitHub Actions',
   'VSCode',
 ];
