@@ -1,7 +1,15 @@
+import https from 'https';
 import axios from 'axios';
 import { BaseConnector } from '../base/connector';
 import { SourceFetchResult } from '../../shared';
 import logger from '../../logging';
+
+// Shared HTTPS agent — keeps connections alive across the many per-ecosystem JSON downloads.
+// MaxListeners bumped to avoid Node.js EventEmitter warning (default is 10, we make >10
+// requests per TLSSocket when downloading individual vuln files).
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 20, maxFreeSockets: 10 });
+httpsAgent.setMaxListeners(50);
+const osvAxios = axios.create({ httpsAgent });
 
 // OSV data dumps — per-ecosystem modified_id.csv + individual JSON files
 // See: https://google.github.io/osv.dev/data/#downloading-recent-changes
@@ -98,7 +106,7 @@ export class OsvConnector extends BaseConnector {
     // Fetch per-ecosystem modified_id.csv — sorted newest-first, lines: "<iso_date>,<ID>"
     // This is O(recent entries) instead of scanning all 216k+ GCS objects alphabetically.
     const csvUrl = `${OSV_GCS_BASE}/${encodeURIComponent(ecosystem)}/modified_id.csv`;
-    const csvResp = await axios.get<string>(csvUrl, {
+    const csvResp = await osvAxios.get<string>(csvUrl, {
       responseType: 'text',
       timeout: 30000,
     });
@@ -135,7 +143,7 @@ export class OsvConnector extends BaseConnector {
     for (const id of recentIds) {
       try {
         const url = `${OSV_GCS_BASE}/${encodeURIComponent(ecosystem)}/${encodeURIComponent(id)}.json`;
-        const res = await axios.get<OsvVulnerability>(url, { timeout: 15000 });
+        const res = await osvAxios.get<OsvVulnerability>(url, { timeout: 15000 });
         if (res.data?.id) {
           (res.data as any)._ecosystem = ecosystem;
           vulns.push(res.data);
