@@ -21,8 +21,9 @@ interface LambdaEvent {
 
 interface SourceResult {
   fetched: number;
-  sent: number;
+  queued: number;
   deduped: number;
+  advisories: NormalizedAdvisory[];
 }
 
 const connectors: Record<SourceName, { fetch: (since?: Date) => Promise<any> }> = {
@@ -54,18 +55,36 @@ export const handler = async (event: LambdaEvent) => {
 
   for (const sourceName of sourcesToRun) {
     try {
-      results[sourceName] = await processSource(sourceName, slackService);
+      results[sourceName] = await processSource(sourceName);
     } catch (err) {
       logger.error({ source: sourceName, err }, 'Source processing failed');
-      results[sourceName] = { fetched: 0, sent: 0, deduped: 0 };
+      results[sourceName] = { fetched: 0, queued: 0, deduped: 0, advisories: [] };
     }
   }
 
-  logger.info({ results }, 'Lambda run complete');
-  return { statusCode: 200, results };
+  const allAdvisories = Object.values(results).flatMap(r => r.advisories);
+  let alertsSent = false;
+  if (allAdvisories.length > 0) {
+    try {
+      const result = await slackService.sendThreadedBatch(allAdvisories);
+      alertsSent = result.success;
+      if (!result.success) {
+        logger.error({ error: result.errorMessage }, 'Threaded batch failed');
+      }
+    } catch (err) {
+      logger.error({ err }, 'Failed to send threaded batch');
+    }
+  }
+
+  const summary = Object.fromEntries(
+    Object.entries(results).map(([k, v]) => [k, { fetched: v.fetched, queued: v.queued, deduped: v.deduped }])
+  );
+
+  logger.info({ results: summary, alertsSent }, 'Lambda run complete');
+  return { statusCode: 200, results: summary, alertsSent };
 };
 
-async function processSource(sourceName: SourceName, slackService: SlackService): Promise<SourceResult> {
+async function processSource(sourceName: SourceName): Promise<SourceResult> {
   logger.info({ source: sourceName }, 'Processing source');
 
   const connector = connectors[sourceName];
@@ -77,20 +96,20 @@ async function processSource(sourceName: SourceName, slackService: SlackService)
   const fetchResult = await connector.fetch(checkpoint ?? undefined);
   if (!fetchResult.success) {
     logger.warn({ source: sourceName, error: fetchResult.errorMessage }, 'Fetch failed');
-    return { fetched: 0, sent: 0, deduped: 0 };
+    return { fetched: 0, queued: 0, deduped: 0, advisories: [] };
   }
 
   logger.info({ source: sourceName, count: fetchResult.items.length }, 'Fetch complete');
 
   if (checkpoint === null) {
-    // First run: save baseline now but send nothing
     await saveCheckpoint(sourceName, new Date());
     logger.info({ source: sourceName }, 'First run baseline established, no alerts sent');
-    return { fetched: fetchResult.items.length, sent: 0, deduped: 0 };
+    return { fetched: fetchResult.items.length, queued: 0, deduped: 0, advisories: [] };
   }
 
-  let sent = 0;
+  let queued = 0;
   let deduped = 0;
+  const advisories: NormalizedAdvisory[] = [];
 
   for (const rawItem of fetchResult.items) {
     try {
@@ -115,19 +134,9 @@ async function processSource(sourceName: SourceName, slackService: SlackService)
       const decision = routingService.route(normalized);
 
       if (decision.routingClass === 'instant_alert') {
-        const result = await slackService.sendInstantAlert(normalized);
-        if (result.success) {
-          sent++;
-          logger.info(
-            { externalId: normalized.externalId, source: sourceName },
-            'Instant alert sent'
-          );
-        } else {
-          logger.warn(
-            { externalId: normalized.externalId, error: result.errorMessage },
-            'Slack send failed'
-          );
-        }
+        advisories.push(normalized);
+        queued++;
+        logger.info({ externalId: normalized.externalId, source: sourceName }, 'Advisory queued');
       }
     } catch (err) {
       logger.error({ err, source: sourceName }, 'Failed to process advisory item');
@@ -137,6 +146,6 @@ async function processSource(sourceName: SourceName, slackService: SlackService)
   // Advance checkpoint to now
   await saveCheckpoint(sourceName, new Date());
 
-  logger.info({ source: sourceName, sent, deduped }, 'Source processing done');
-  return { fetched: fetchResult.items.length, sent, deduped };
+  logger.info({ source: sourceName, queued, deduped }, 'Source processing done');
+  return { fetched: fetchResult.items.length, queued, deduped, advisories };
 }

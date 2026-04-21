@@ -15,7 +15,6 @@ const DEFAULT_ECOSYSTEMS = [
   'Alpine',
   'npm',
   'PyPI',
-  'Go',
   'NuGet',
   'Packagist',
   'GitHub Actions',

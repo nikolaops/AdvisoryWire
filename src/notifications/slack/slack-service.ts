@@ -59,47 +59,88 @@ export class SlackService {
     }
   }
 
-  async sendDigest(advisories: NormalizedAdvisory[]): Promise<SlackMessageResult> {
+  async sendThreadedBatch(advisories: NormalizedAdvisory[]): Promise<SlackMessageResult> {
     try {
-      logger.info({ count: advisories.length }, 'Sending daily digest');
-
       if (advisories.length === 0) {
-        logger.info('No advisories for digest, skipping');
         return { success: true };
       }
 
-      const blocks = this.buildDigestBlocks(advisories);
+      logger.info({ count: advisories.length }, 'Sending threaded batch');
 
-      const response = await this.client.chat.postMessage({
-        channel: this.channelId,
-        text: `📋 Daily Security Advisory Digest (${advisories.length} items)`,
-        blocks,
+      const criticalCount = advisories.filter(a => a.severity === 'critical').length;
+      const highCount = advisories.filter(a => a.severity === 'high').length;
+      const severityEmoji: Record<string, string> = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', unknown: '⚪' };
+
+      const severitySummary = [
+        criticalCount > 0 ? `${criticalCount} critical` : '',
+        highCount > 0 ? `${highCount} high` : '',
+      ].filter(Boolean).join(', ') || `${advisories.length} findings`;
+
+      // Build parent summary message
+      const summaryLines = advisories.map(a => {
+        const emoji = severityEmoji[a.severity] ?? '⚪';
+        const id = a.cveIds[0] ?? a.externalId;
+        const refUrl = a.references[0]?.url;
+        const idText = refUrl ? `<${refUrl}|${id}>` : `\`${id}\``;
+        const desc = (a.summary || a.title).replace(/\n/g, ' ').substring(0, 80);
+        return `${emoji} *${idText}* — ${desc}`;
       });
 
-      if (response.ok && response.ts) {
-        logger.info({ messageTs: response.ts, count: advisories.length }, 'Digest sent successfully');
+      const parentBlocks: any[] = [
+        {
+          type: 'header',
+          text: {
+            type: 'plain_text',
+            text: `🚨 ${advisories.length} new security finding${advisories.length === 1 ? '' : 's'} (${severitySummary}) — expand for details`,
+            emoji: true,
+          },
+        },
+      ];
 
-        return {
-          success: true,
-          messageRef: response.ts,
-        };
-      } else {
-        const errorMessage = `Slack API returned not ok: ${response.error}`;
-        logger.error({ error: response.error }, 'Digest message failed');
-        
-        return {
-          success: false,
-          errorMessage,
-        };
+      // 15 lines per section to stay under 3000 char limit
+      for (let i = 0; i < summaryLines.length; i += 15) {
+        parentBlocks.push({
+          type: 'section',
+          text: { type: 'mrkdwn', text: summaryLines.slice(i, i + 15).join('\n') },
+        });
       }
+
+      const parentResponse = await this.client.chat.postMessage({
+        channel: this.channelId,
+        text: `🚨 ${advisories.length} new security findings (${severitySummary})`,
+        blocks: parentBlocks,
+        unfurl_links: false,
+        unfurl_media: false,
+      });
+
+      if (!parentResponse.ok || !parentResponse.ts) {
+        return { success: false, errorMessage: `Parent message failed: ${parentResponse.error}` };
+      }
+
+      const threadTs = parentResponse.ts;
+      logger.info({ threadTs, count: advisories.length }, 'Parent message sent, posting thread replies');
+
+      // Post each finding as a thread reply
+      for (const advisory of advisories) {
+        try {
+          const blocks = this.buildInstantAlertBlocks(advisory);
+          await this.client.chat.postMessage({
+            channel: this.channelId,
+            thread_ts: threadTs,
+            text: `🚨 ${advisory.title}`,
+            blocks,
+          });
+        } catch (err) {
+          logger.warn({ err, externalId: advisory.externalId }, 'Failed to post thread reply, continuing');
+        }
+      }
+
+      logger.info({ threadTs, count: advisories.length }, 'Threaded batch complete');
+      return { success: true, messageRef: threadTs };
     } catch (error: any) {
       const errorMessage = error?.message || String(error);
-      logger.error({ error }, 'Failed to send digest');
-      
-      return {
-        success: false,
-        errorMessage,
-      };
+      logger.error({ error }, 'Failed to send threaded batch');
+      return { success: false, errorMessage };
     }
   }
 
@@ -193,83 +234,6 @@ export class SlackService {
     }
 
     blocks.push({ type: 'divider' });
-
-    return blocks;
-  }
-
-  private buildDigestBlocks(advisories: NormalizedAdvisory[]): any[] {
-    const blocks: any[] = [
-      {
-        type: 'header',
-        text: {
-          type: 'plain_text',
-          text: `📋 Daily Security Advisory Digest`,
-        },
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${advisories.length} security advisories* from the last 24 hours:`,
-        },
-      },
-      {
-        type: 'divider',
-      },
-    ];
-
-    // Group by severity
-    const bySeverity: Record<string, NormalizedAdvisory[]> = {
-      critical: [],
-      high: [],
-      medium: [],
-      low: [],
-      unknown: [],
-    };
-
-    advisories.forEach(adv => {
-      bySeverity[adv.severity].push(adv);
-    });
-
-    for (const [severity, items] of Object.entries(bySeverity)) {
-      if (items.length === 0) continue;
-
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${severity.toUpperCase()}* (${items.length})`,
-        },
-      });
-
-      for (const adv of items.slice(0, 10)) {
-        const identifiers = adv.cveIds.length > 0 ? adv.cveIds[0] : adv.externalId;
-        const refUrl = adv.references[0]?.url || '';
-        const linkText = refUrl ? `<${refUrl}|${identifiers}>` : identifiers;
-
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `• ${linkText} - ${adv.title.substring(0, 100)}${adv.title.length > 100 ? '...' : ''}`,
-          },
-        });
-      }
-
-      if (items.length > 10) {
-        blocks.push({
-          type: 'section',
-          text: {
-            type: 'mrkdwn',
-            text: `_...and ${items.length - 10} more ${severity} severity items_`,
-          },
-        });
-      }
-    }
-
-    blocks.push({
-      type: 'divider',
-    });
 
     return blocks;
   }
